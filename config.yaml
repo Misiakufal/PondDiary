@@ -1,0 +1,20 @@
+name: Pond Diary
+version: "1.0.0"
+slug: pond_diary
+description: Track pond water tests, treatments, and pond photos from a mobile-friendly web app.
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: application
+boot: auto
+init: false
+webui: http://[HOST]:[PORT:8099]
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: Pond Diary web interface
+map:
+  - addon_config:rw
+options: {}
+schema: {}
