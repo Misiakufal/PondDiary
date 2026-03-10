@@ -15,8 +15,14 @@ from urllib.parse import unquote, urlparse
 DATA_DIR = Path("/data")
 UPLOADS_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "pond_diary.db"
+OPTIONS_PATH = DATA_DIR / "options.json"
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "8099"))
+DEFAULT_OPTIONS = {
+    "default_mode": "water_test",
+    "black_mode": False,
+}
+VALID_MODES = {"water_test", "product", "photo"}
 
 
 def ensure_storage() -> None:
@@ -38,6 +44,22 @@ def ensure_storage() -> None:
             """
         )
         connection.commit()
+
+
+def load_options() -> dict:
+    options = dict(DEFAULT_OPTIONS)
+    if OPTIONS_PATH.exists():
+        try:
+            stored = json.loads(OPTIONS_PATH.read_text(encoding="utf-8"))
+            if isinstance(stored, dict):
+                options.update(stored)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    default_mode = str(options.get("default_mode", DEFAULT_OPTIONS["default_mode"])).strip()
+    options["default_mode"] = default_mode if default_mode in VALID_MODES else DEFAULT_OPTIONS["default_mode"]
+    options["black_mode"] = bool(options.get("black_mode", False))
+    return options
 
 
 def utc_now() -> str:
@@ -87,17 +109,18 @@ def fetch_entries() -> list[dict]:
     entries = []
     for row in rows:
         details = json.loads(row["details_json"])
-        entry = {
-            "id": row["id"],
-            "type": row["entry_type"],
-            "title": row["title"],
-            "description": row["description"] or "",
-            "eventDate": row["event_date"],
-            "createdAt": row["created_at"],
-            "details": details,
-            "photoUrl": f"/uploads/{row['photo_path']}" if row["photo_path"] else None,
-        }
-        entries.append(entry)
+        entries.append(
+            {
+                "id": row["id"],
+                "type": row["entry_type"],
+                "title": row["title"],
+                "description": row["description"] or "",
+                "eventDate": row["event_date"],
+                "createdAt": row["created_at"],
+                "details": details,
+                "photoUrl": f"/uploads/{row['photo_path']}" if row["photo_path"] else None,
+            }
+        )
     return entries
 
 
@@ -152,8 +175,8 @@ def save_uploaded_photo(file_item: cgi.FieldStorage) -> str:
     return filename
 
 
-def render_app() -> str:
-    return """<!DOCTYPE html>
+def render_app(options: dict) -> str:
+    template = """<!DOCTYPE html>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\">
@@ -161,139 +184,184 @@ def render_app() -> str:
   <title>Pond Diary</title>
   <style>
     :root {
-      --bg: #eef6f3;
-      --panel: rgba(255, 255, 255, 0.9);
-      --panel-strong: #ffffff;
-      --text: #15352b;
-      --muted: #5f746d;
-      --line: rgba(21, 53, 43, 0.12);
-      --brand: #1b7f63;
-      --brand-deep: #115744;
-      --warm: #d2a25a;
-      --danger: #a94141;
-      --shadow: 0 16px 40px rgba(20, 58, 48, 0.12);
-      --radius: 22px;
+      --bg: #f4f7f5;
+      --surface: #ffffff;
+      --surface-soft: #f7faf8;
+      --surface-strong: #eef3f0;
+      --text: #17211d;
+      --muted: #66756f;
+      --line: #dce5e0;
+      --line-strong: #cbd7d0;
+      --brand: #1a7f63;
+      --brand-strong: #116149;
+      --accent: #d2aa68;
+      --danger: #b14d4d;
+      --shadow: 0 18px 44px rgba(18, 31, 26, 0.08);
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-sm: 14px;
+    }
+
+    body.theme-black {
+      --bg: #050505;
+      --surface: #0f0f10;
+      --surface-soft: #161719;
+      --surface-strong: #1d1f22;
+      --text: #f5f6f7;
+      --muted: #a8afb5;
+      --line: #2a2d31;
+      --line-strong: #34393d;
+      --brand: #f5f5f5;
+      --brand-strong: #ffffff;
+      --accent: #9b9b9b;
+      --danger: #ff8c8c;
+      --shadow: none;
     }
 
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
       color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(27, 127, 99, 0.16), transparent 30%),
-        radial-gradient(circle at right, rgba(210, 162, 90, 0.18), transparent 25%),
-        linear-gradient(180deg, #f7fbf8 0%, var(--bg) 100%);
-      min-height: 100vh;
     }
 
-    .shell {
-      width: min(1180px, calc(100vw - 24px));
+    .app {
+      width: min(1220px, calc(100vw - 24px));
       margin: 0 auto;
-      padding: 20px 0 32px;
+      padding: 24px 0 40px;
     }
 
     .hero {
-      background: linear-gradient(135deg, rgba(255,255,255,0.82), rgba(255,255,255,0.96));
-      border: 1px solid rgba(255,255,255,0.6);
-      backdrop-filter: blur(8px);
-      border-radius: 28px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
       box-shadow: var(--shadow);
-      padding: 24px;
-      overflow: hidden;
-      position: relative;
+      padding: 28px;
     }
 
-    .hero::after {
-      content: \"\";
-      position: absolute;
-      inset: auto -40px -80px auto;
-      width: 220px;
-      height: 220px;
-      background: radial-gradient(circle, rgba(27, 127, 99, 0.2), transparent 65%);
-      pointer-events: none;
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
-    .hero h1 {
-      margin: 0;
-      font-size: clamp(2rem, 4vw, 3.6rem);
-      line-height: 0.95;
-      letter-spacing: -0.04em;
+    h1 {
+      margin: 14px 0 8px;
+      font-size: clamp(2.1rem, 4vw, 4.2rem);
+      line-height: 0.94;
+      letter-spacing: -0.05em;
     }
 
     .hero p {
-      margin: 10px 0 0;
+      margin: 0;
       max-width: 760px;
       color: var(--muted);
       font-size: 1rem;
+      line-height: 1.6;
     }
 
     .layout {
       display: grid;
-      grid-template-columns: 380px minmax(0, 1fr);
+      grid-template-columns: 360px minmax(0, 1fr);
       gap: 20px;
       margin-top: 20px;
       align-items: start;
     }
 
     .panel {
-      background: var(--panel);
-      border: 1px solid rgba(255,255,255,0.75);
-      border-radius: var(--radius);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
       box-shadow: var(--shadow);
-      padding: 18px;
-      backdrop-filter: blur(10px);
+      padding: 20px;
+    }
+
+    .panel-title {
+      margin: 0 0 14px;
+      font-size: 1.08rem;
+      letter-spacing: -0.02em;
+    }
+
+    .panel-copy {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.5;
     }
 
     .tabs {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
+      padding: 6px;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 16px;
     }
 
     .tab {
       border: 0;
-      border-radius: 999px;
-      background: rgba(27, 127, 99, 0.08);
-      color: var(--brand-deep);
-      padding: 10px 12px;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--muted);
+      padding: 12px 10px;
+      font: inherit;
       font-weight: 700;
       cursor: pointer;
-      transition: transform 0.15s ease, background 0.15s ease;
     }
 
     .tab.active {
-      background: var(--brand);
-      color: #fff;
-      transform: translateY(-1px);
+      background: var(--text);
+      color: var(--surface);
+    }
+
+    body.theme-black .tab.active {
+      background: var(--surface-strong);
+      color: var(--text);
+      border: 1px solid var(--line-strong);
     }
 
     .form-panel { display: none; }
     .form-panel.active { display: block; }
 
-    label {
-      display: block;
-      font-size: 0.9rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .field { margin-bottom: 12px; }
+    .field { margin-bottom: 14px; }
     .grid-2 {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
 
-    input, textarea, select {
+    label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    input, textarea {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 12px 13px;
-      font: inherit;
+      border-radius: var(--radius-sm);
+      background: var(--surface-soft);
       color: var(--text);
-      background: rgba(255, 255, 255, 0.95);
+      padding: 12px 14px;
+      font: inherit;
+      outline: none;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--brand);
+      background: var(--surface);
     }
 
     textarea {
@@ -302,15 +370,20 @@ def render_app() -> str:
     }
 
     .button {
+      width: 100%;
       border: 0;
-      border-radius: 999px;
-      padding: 12px 16px;
+      border-radius: 14px;
+      background: var(--brand);
+      color: #ffffff;
+      padding: 13px 16px;
       font: inherit;
       font-weight: 800;
       cursor: pointer;
-      background: linear-gradient(135deg, var(--brand), #25a07d);
-      color: #fff;
-      box-shadow: 0 10px 24px rgba(27, 127, 99, 0.24);
+    }
+
+    body.theme-black .button {
+      background: #f1f1f1;
+      color: #0a0a0a;
     }
 
     .button:disabled {
@@ -318,18 +391,22 @@ def render_app() -> str:
       cursor: wait;
     }
 
-    .hint, .empty, .meta, .details, .status {
-      color: var(--muted);
-    }
-
     .status {
       min-height: 24px;
       margin-top: 12px;
       font-weight: 700;
+      color: var(--muted);
     }
 
+    .status.success { color: var(--brand-strong); }
     .status.error { color: var(--danger); }
-    .status.success { color: var(--brand-deep); }
+
+    .hint {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.92rem;
+    }
 
     .feed {
       display: grid;
@@ -337,90 +414,118 @@ def render_app() -> str:
     }
 
     .entry {
-      background: var(--panel-strong);
-      border: 1px solid rgba(21, 53, 43, 0.08);
-      border-radius: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
       padding: 16px;
-      display: grid;
-      gap: 10px;
+      background: var(--surface-soft);
     }
 
-    .entry-header {
+    .entry-top {
       display: flex;
-      align-items: start;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 10px;
+      gap: 12px;
+      margin-bottom: 10px;
     }
 
     .entry-type {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
+      padding: 6px 10px;
       border-radius: 999px;
-      background: rgba(27, 127, 99, 0.08);
-      color: var(--brand-deep);
-      font-size: 0.85rem;
+      background: var(--surface-strong);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.78rem;
       font-weight: 800;
-      text-transform: uppercase;
       letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
     .entry h3 {
-      margin: 0;
-      font-size: 1.1rem;
+      margin: 8px 0 0;
+      font-size: 1.08rem;
+      letter-spacing: -0.02em;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.92rem;
     }
 
     .details {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      font-size: 0.92rem;
+      margin-bottom: 10px;
     }
 
     .pill {
-      background: rgba(21, 53, 43, 0.05);
+      background: var(--surface);
+      border: 1px solid var(--line);
       border-radius: 999px;
       padding: 6px 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .entry p {
+      margin: 0;
+      color: var(--text);
+      line-height: 1.55;
     }
 
     .entry img {
       width: 100%;
-      max-height: 320px;
+      max-height: 340px;
       object-fit: cover;
       border-radius: 16px;
-      border: 1px solid rgba(21, 53, 43, 0.08);
+      border: 1px solid var(--line);
+      margin-top: 12px;
+    }
+
+    .empty {
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      color: var(--muted);
+      text-align: center;
+      background: var(--surface-soft);
     }
 
     @media (max-width: 920px) {
       .layout { grid-template-columns: 1fr; }
     }
 
-    @media (max-width: 600px) {
-      .shell { width: min(100vw - 16px, 100%); padding-top: 12px; }
-      .hero, .panel { border-radius: 22px; }
-      .grid-2 { grid-template-columns: 1fr; }
+    @media (max-width: 640px) {
+      .app { width: min(100vw - 16px, 100%); padding-top: 16px; }
+      .hero, .panel { border-radius: 18px; }
       .tabs { grid-template-columns: 1fr; }
-      .entry-header { flex-direction: column; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .entry-top { flex-direction: column; }
     }
   </style>
 </head>
-<body>
-  <main class=\"shell\">
+<body class=\"__BODY_CLASS__\">
+  <main class=\"app\">
     <section class=\"hero\">
-      <h1>Pond Diary</h1>
-      <p>Keep one clear timeline of water test readings, treatments, and pond photos. The layout works well on a desktop browser and scales down cleanly on mobile.</p>
+      <div class=\"eyebrow\">Pond Journal</div>
+      <h1>Track pond care with a cleaner daily log.</h1>
+      <p>Add water test results, treatments, and pond photos in one place. The interface stays simple on desktop and mobile, and the add-on settings can choose the starting mode and a black theme.</p>
     </section>
 
     <section class=\"layout\">
       <aside class=\"panel\">
+        <h2 class=\"panel-title\">New entry</h2>
+        <p class=\"panel-copy\">Choose the entry type, add the details, and save. Your configured default mode opens first every time.</p>
+
         <div class=\"tabs\">
-          <button class=\"tab active\" type=\"button\" data-target=\"water-form\">Water Test</button>
-          <button class=\"tab\" type=\"button\" data-target=\"product-form\">Product</button>
-          <button class=\"tab\" type=\"button\" data-target=\"photo-form\">Photo</button>
+          <button class=\"tab\" type=\"button\" data-target=\"water-form\" data-mode=\"water_test\">Water Test</button>
+          <button class=\"tab\" type=\"button\" data-target=\"product-form\" data-mode=\"product\">Product</button>
+          <button class=\"tab\" type=\"button\" data-target=\"photo-form\" data-mode=\"photo\">Photo</button>
         </div>
 
-        <form id=\"water-form\" class=\"form-panel active\">
+        <form id=\"water-form\" class=\"form-panel\">
           <div class=\"field\">
             <label for=\"water-date\">Test date</label>
             <input id=\"water-date\" name=\"eventDate\" type=\"date\" required>
@@ -451,8 +556,8 @@ def render_app() -> str:
               <input id=\"nitrate\" name=\"nitrate\" type=\"text\" placeholder=\"10 ppm\">
             </div>
             <div class=\"field\">
-              <label for=\"kh\">KH / GH</label>
-              <input id=\"kh\" name=\"hardness\" type=\"text\" placeholder=\"KH 6 / GH 8\">
+              <label for=\"hardness\">KH / GH</label>
+              <input id=\"hardness\" name=\"hardness\" type=\"text\" placeholder=\"KH 6 / GH 8\">
             </div>
           </div>
           <div class=\"field\">
@@ -505,194 +610,203 @@ def render_app() -> str:
         </form>
 
         <div id=\"status\" class=\"status\" aria-live=\"polite\"></div>
-        <p class=\"hint\">Photos are stored inside the add-on data folder, so entries remain available after restarts.</p>
+        <p class=\"hint\">The black mode and default entry type are configured from the add-on options in Home Assistant.</p>
       </aside>
 
       <section class=\"panel\">
-        <div class=\"entry-header\">
-          <div>
-            <h2 style=\"margin:0;\">Recent entries</h2>
-            <p class=\"meta\" style=\"margin:6px 0 0;\">Your main screen shows water tests, products, and photos in one timeline.</p>
-          </div>
-        </div>
+        <h2 class=\"panel-title\">Entries</h2>
+        <p class=\"panel-copy\">Everything appears in one reverse-chronological list so you can quickly compare readings, treatments, and visual changes.</p>
         <div id=\"feed\" class=\"feed\">
-          <div class=\"empty\">No entries yet. Add your first pond update from the panel on the left.</div>
+          <div class=\"empty\">No entries yet. Add the first pond update from the left panel.</div>
         </div>
       </section>
     </section>
   </main>
 
   <script>
-    const tabs = Array.from(document.querySelectorAll(\".tab\"));
-    const panels = Array.from(document.querySelectorAll(\".form-panel\"));
-    const statusEl = document.getElementById(\"status\");
-    const feedEl = document.getElementById(\"feed\");
+    const APP_DEFAULT_MODE = "__DEFAULT_MODE__";
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const panels = Array.from(document.querySelectorAll(".form-panel"));
+    const statusEl = document.getElementById("status");
+    const feedEl = document.getElementById("feed");
 
     function setTodayDefaults() {
       const today = new Date().toISOString().slice(0, 10);
-      for (const input of document.querySelectorAll('input[type=\"date\"]')) {
-        input.value = today;
-      }
+      document.querySelectorAll('input[type="date"]').forEach((input) => {
+        if (!input.value) {
+          input.value = today;
+        }
+      });
     }
 
-    function setStatus(message, kind = \"\") {
-      statusEl.textContent = message || \"\";
-      statusEl.className = kind ? `status ${kind}` : \"status\";
+    function setStatus(message, kind = "") {
+      statusEl.textContent = message || "";
+      statusEl.className = kind ? `status ${kind}` : "status";
+    }
+
+    function activateMode(mode) {
+      const activeTab = tabs.find((tab) => tab.dataset.mode === mode) || tabs[0];
+      tabs.forEach((tab) => tab.classList.toggle("active", tab === activeTab));
+      panels.forEach((panel) => panel.classList.toggle("active", panel.id === activeTab.dataset.target));
+      setStatus("");
     }
 
     function escapeHtml(value) {
-      return value
-        .replaceAll(\"&\", \"&amp;\")
-        .replaceAll(\"<\", \"&lt;\")
-        .replaceAll(\">\", \"&gt;\")
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
-        .replaceAll(\"'\", \"&#39;\");
+        .replaceAll("'", "&#39;");
     }
 
     function renderDetails(entry) {
-      const pairs = [];
       const details = entry.details || {};
-      if (entry.type === \"water_test\") {
-        [[\"pH\", details.ph], [\"Temp\", details.temperature], [\"Ammonia\", details.ammonia], [\"Nitrite\", details.nitrite], [\"Nitrate\", details.nitrate], [\"Hardness\", details.hardness]].forEach(([label, value]) => {
-          if (value) pairs.push(`<span class=\"pill\">${escapeHtml(label)}: ${escapeHtml(value)}</span>`);
+      const pills = [];
+      if (entry.type === "water_test") {
+        [["pH", details.ph], ["Temp", details.temperature], ["Ammonia", details.ammonia], ["Nitrite", details.nitrite], ["Nitrate", details.nitrate], ["Hardness", details.hardness]].forEach(([label, value]) => {
+          if (value) {
+            pills.push(`<span class="pill">${escapeHtml(label)}: ${escapeHtml(value)}</span>`);
+          }
         });
-      } else if (entry.type === \"product\") {
-        [[\"Dose\", details.dose], [\"Purpose\", details.purpose]].forEach(([label, value]) => {
-          if (value) pairs.push(`<span class=\"pill\">${escapeHtml(label)}: ${escapeHtml(value)}</span>`);
+      } else if (entry.type === "product") {
+        [["Dose", details.dose], ["Purpose", details.purpose]].forEach(([label, value]) => {
+          if (value) {
+            pills.push(`<span class="pill">${escapeHtml(label)}: ${escapeHtml(value)}</span>`);
+          }
         });
       }
-      return pairs.join(\"\");
+      return pills.join("");
     }
 
     function typeLabel(type) {
-      if (type === \"water_test\") return \"Water Test\";
-      if (type === \"product\") return \"Product\";
-      return \"Photo\";
+      if (type === "water_test") return "Water Test";
+      if (type === "product") return "Product";
+      return "Photo";
     }
 
     function renderFeed(entries) {
       if (!entries.length) {
-        feedEl.innerHTML = '<div class=\"empty\">No entries yet. Add your first pond update from the panel on the left.</div>';
+        feedEl.innerHTML = '<div class="empty">No entries yet. Add the first pond update from the left panel.</div>';
         return;
       }
 
       feedEl.innerHTML = entries.map((entry) => {
-        const description = entry.description ? `<p style=\"margin:0;\">${escapeHtml(entry.description)}</p>` : \"\";
-        const photo = entry.photoUrl ? `<img src=\"${encodeURI(entry.photoUrl)}\" alt=\"Pond photo entry\">` : \"\";
+        const description = entry.description ? `<p>${escapeHtml(entry.description)}</p>` : "";
+        const photo = entry.photoUrl ? `<img src="${encodeURI(entry.photoUrl)}" alt="Pond photo entry">` : "";
         return `
-          <article class=\"entry\">
-            <div class=\"entry-header\">
+          <article class="entry">
+            <div class="entry-top">
               <div>
-                <div class=\"entry-type\">${typeLabel(entry.type)}</div>
+                <div class="entry-type">${typeLabel(entry.type)}</div>
                 <h3>${escapeHtml(entry.title)}</h3>
               </div>
-              <div class=\"meta\">${escapeHtml(entry.eventDate)}</div>
+              <div class="meta">${escapeHtml(entry.eventDate)}</div>
             </div>
-            <div class=\"details\">${renderDetails(entry)}</div>
+            <div class="details">${renderDetails(entry)}</div>
             ${description}
             ${photo}
           </article>
         `;
-      }).join(\"\");
+      }).join("");
     }
 
     async function loadEntries() {
-      const response = await fetch(\"/api/entries\");
+      const response = await fetch("/api/entries");
       const entries = await response.json();
       renderFeed(entries);
     }
 
     async function submitJsonForm(form, url) {
-      const submitButton = form.querySelector(\"button[type='submit']\");
+      const submitButton = form.querySelector("button[type='submit']");
       submitButton.disabled = true;
-      setStatus(\"Saving entry...\");
+      setStatus("Saving entry...");
       try {
-        const formData = new FormData(form);
-        const payload = Object.fromEntries(formData.entries());
+        const payload = Object.fromEntries(new FormData(form).entries());
         const response = await fetch(url, {
-          method: \"POST\",
-          headers: { \"Content-Type\": \"application/json\" },
-          body: JSON.stringify(payload)
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         });
         const result = await response.json();
         if (!response.ok) {
-          throw new Error(result.error || \"Unable to save entry.\");
+          throw new Error(result.error || "Unable to save entry.");
         }
         form.reset();
         setTodayDefaults();
-        setStatus(\"Entry saved.\", \"success\");
+        setStatus("Entry saved.", "success");
         await loadEntries();
       } catch (error) {
-        setStatus(error.message, \"error\");
+        setStatus(error.message || "Unable to save entry.", "error");
       } finally {
         submitButton.disabled = false;
       }
     }
 
     async function submitPhotoForm(form) {
-      const submitButton = form.querySelector(\"button[type='submit']\");
+      const submitButton = form.querySelector("button[type='submit']");
       submitButton.disabled = true;
-      setStatus(\"Uploading photo...\");
+      setStatus("Uploading photo...");
       try {
-        const response = await fetch(\"/api/photos\", {
-          method: \"POST\",
-          body: new FormData(form)
+        const response = await fetch("/api/photos", {
+          method: "POST",
+          body: new FormData(form),
         });
         const result = await response.json();
         if (!response.ok) {
-          throw new Error(result.error || \"Unable to save photo entry.\");
+          throw new Error(result.error || "Unable to save photo entry.");
         }
         form.reset();
         setTodayDefaults();
-        setStatus(\"Photo entry saved.\", \"success\");
+        setStatus("Photo entry saved.", "success");
         await loadEntries();
       } catch (error) {
-        setStatus(error.message, \"error\");
+        setStatus(error.message || "Unable to save photo entry.", "error");
       } finally {
         submitButton.disabled = false;
       }
     }
 
     tabs.forEach((tab) => {
-      tab.addEventListener(\"click\", () => {
-        tabs.forEach((item) => item.classList.toggle(\"active\", item === tab));
-        panels.forEach((panel) => panel.classList.toggle(\"active\", panel.id === tab.dataset.target));
-        setStatus(\"\");
-      });
+      tab.addEventListener("click", () => activateMode(tab.dataset.mode));
     });
 
-    document.getElementById(\"water-form\").addEventListener(\"submit\", (event) => {
+    document.getElementById("water-form").addEventListener("submit", (event) => {
       event.preventDefault();
-      submitJsonForm(event.currentTarget, \"/api/water-tests\");
+      submitJsonForm(event.currentTarget, "/api/water-tests");
     });
 
-    document.getElementById(\"product-form\").addEventListener(\"submit\", (event) => {
+    document.getElementById("product-form").addEventListener("submit", (event) => {
       event.preventDefault();
-      submitJsonForm(event.currentTarget, \"/api/products\");
+      submitJsonForm(event.currentTarget, "/api/products");
     });
 
-    document.getElementById(\"photo-form\").addEventListener(\"submit\", (event) => {
+    document.getElementById("photo-form").addEventListener("submit", (event) => {
       event.preventDefault();
       submitPhotoForm(event.currentTarget);
     });
 
     setTodayDefaults();
+    activateMode(APP_DEFAULT_MODE);
     loadEntries().catch(() => {
-      setStatus(\"Unable to load entries.\", \"error\");
+      setStatus("Unable to load entries.", "error");
     });
   </script>
 </body>
 </html>
 """
 
+    body_class = "theme-black" if options.get("black_mode") else ""
+    return template.replace("__DEFAULT_MODE__", options["default_mode"]).replace("__BODY_CLASS__", body_class)
+
 
 class PondDiaryHandler(BaseHTTPRequestHandler):
-    server_version = "PondDiary/1.0"
+    server_version = "PondDiary/1.1"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            text_response(self, render_app())
+            text_response(self, render_app(load_options()))
             return
 
         if parsed.path == "/api/entries":
@@ -740,7 +854,15 @@ class PondDiaryHandler(BaseHTTPRequestHandler):
                 return
 
             if parsed.path == "/api/photos":
-                form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": self.headers.get("Content-Type", ""), "CONTENT_LENGTH": self.headers.get("Content-Length", "0")})
+                form = cgi.FieldStorage(
+                    fp=self.rfile,
+                    headers=self.headers,
+                    environ={
+                        "REQUEST_METHOD": "POST",
+                        "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+                        "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
+                    },
+                )
                 event_date = validate_event_date(form.getfirst("eventDate", ""))
                 description = normalize_text(form.getfirst("description", ""))
                 photo_field = form["photo"] if "photo" in form else None
@@ -771,6 +893,7 @@ class PondDiaryHandler(BaseHTTPRequestHandler):
         if not filename:
             json_response(self, {"error": "Not found."}, HTTPStatus.NOT_FOUND)
             return
+
         file_path = UPLOADS_DIR / filename
         if not file_path.exists() or not file_path.is_file():
             json_response(self, {"error": "Not found."}, HTTPStatus.NOT_FOUND)
@@ -798,5 +921,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

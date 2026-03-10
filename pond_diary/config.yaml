@@ -1,5 +1,5 @@
 name: Pond Diary
-version: "1.0.1"
+version: "1.1.0"
 slug: pond_diary
 description: Track pond water tests, treatments, and pond photos from a mobile-friendly web app.
 arch:
@@ -16,6 +16,9 @@ ports_description:
   8099/tcp: Pond Diary web interface
 map:
   - addon_config:rw
-options: {}
-schema: {}
-
+options:
+  default_mode: water_test
+  black_mode: false
+schema:
+  default_mode: list(water_test|product|photo)
+  black_mode: bool
