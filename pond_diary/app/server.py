@@ -758,7 +758,7 @@ def render_app(options: dict) -> str:
               </div>
               <div class="entry-actions">
                 <div class="meta">${escapeHtml(entry.eventDate)}</div>
-                <button class="entry-delete" type="button" data-entry-id="${entry.id}" aria-label="Remove entry" title="Remove entry">×</button>
+                <button class="entry-delete" type="button" data-entry-id="${entry.id}" aria-label="Remove entry" title="Remove entry">x</button>
               </div>
             </div>
             <div class="details">${renderDetails(entry)}</div>
@@ -1024,6 +1024,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
 
