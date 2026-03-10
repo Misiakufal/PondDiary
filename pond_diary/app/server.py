@@ -545,7 +545,7 @@ def render_app() -> str:
         .replaceAll(\"&\", \"&amp;\")
         .replaceAll(\"<\", \"&lt;\")
         .replaceAll(\">\", \"&gt;\")
-        .replaceAll("\"", "&quot;")
+        .replaceAll('"', "&quot;")
         .replaceAll(\"'\", \"&#39;\");
     }
 
@@ -798,4 +798,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
