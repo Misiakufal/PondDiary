@@ -122,6 +122,27 @@ def fetch_entries() -> list[dict]:
             }
         )
     return entries
+def delete_entry(entry_id: int) -> bool:
+    with db_connection() as connection:
+        row = connection.execute(
+            "SELECT photo_path FROM entries WHERE id = ?",
+            (entry_id,),
+        ).fetchone()
+        if row is None:
+            return False
+
+        connection.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+        connection.commit()
+
+    photo_path = row["photo_path"]
+    if photo_path:
+        file_path = UPLOADS_DIR / photo_path
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except OSError:
+            pass
+    return True
 
 
 def parse_json(handler: BaseHTTPRequestHandler) -> dict:
@@ -428,6 +449,13 @@ def render_app(options: dict) -> str:
       margin-bottom: 10px;
     }
 
+    .entry-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
     .entry-type {
       display: inline-flex;
       align-items: center;
@@ -440,6 +468,33 @@ def render_app(options: dict) -> str:
       font-weight: 800;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+
+    .entry-delete {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--muted);
+      font: inherit;
+      font-weight: 900;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      flex: 0 0 auto;
+    }
+
+    .entry-delete:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    body.theme-black .entry-delete {
+      background: var(--surface-soft);
     }
 
     .entry h3 {
@@ -701,7 +756,10 @@ def render_app(options: dict) -> str:
                 <div class="entry-type">${typeLabel(entry.type)}</div>
                 <h3>${escapeHtml(entry.title)}</h3>
               </div>
-              <div class="meta">${escapeHtml(entry.eventDate)}</div>
+              <div class="entry-actions">
+                <div class="meta">${escapeHtml(entry.eventDate)}</div>
+                <button class="entry-delete" type="button" data-entry-id="${entry.id}" aria-label="Remove entry" title="Remove entry">×</button>
+              </div>
             </div>
             <div class="details">${renderDetails(entry)}</div>
             ${description}
@@ -715,6 +773,25 @@ def render_app(options: dict) -> str:
       const response = await fetch("/api/entries");
       const entries = await response.json();
       renderFeed(entries);
+    }
+
+    async function deleteEntry(entryId) {
+      setStatus("Removing entry...");
+      try {
+        const response = await fetch("/api/entries/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: entryId }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "Unable to remove entry.");
+        }
+        setStatus("Entry removed.", "success");
+        await loadEntries();
+      } catch (error) {
+        setStatus(error.message || "Unable to remove entry.", "error");
+      }
     }
 
     async function submitJsonForm(form, url) {
@@ -769,6 +846,18 @@ def render_app(options: dict) -> str:
 
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => activateMode(tab.dataset.mode));
+    });
+
+    feedEl.addEventListener("click", (event) => {
+      const button = event.target.closest(".entry-delete");
+      if (!button) {
+        return;
+      }
+      const entryId = Number(button.dataset.entryId);
+      if (!entryId || !window.confirm("Remove this entry?")) {
+        return;
+      }
+      deleteEntry(entryId);
     });
 
     document.getElementById("water-form").addEventListener("submit", (event) => {
@@ -880,6 +969,20 @@ class PondDiaryHandler(BaseHTTPRequestHandler):
                 json_response(self, {"status": "ok"}, HTTPStatus.CREATED)
                 return
 
+            if parsed.path == "/api/entries/delete":
+                payload = parse_json(self)
+                try:
+                    entry_id = int(payload.get("id", 0))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("A valid entry id is required.") from exc
+                if entry_id <= 0:
+                    raise ValueError("A valid entry id is required.")
+                if not delete_entry(entry_id):
+                    json_response(self, {"error": "Entry not found."}, HTTPStatus.NOT_FOUND)
+                    return
+                json_response(self, {"status": "ok"}, HTTPStatus.OK)
+                return
+
             json_response(self, {"error": "Not found."}, HTTPStatus.NOT_FOUND)
         except ValueError as exc:
             json_response(self, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
@@ -921,3 +1024,8 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
