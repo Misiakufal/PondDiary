@@ -1,5 +1,5 @@
 name: Pond Diary
-version: "1.4.1"
+version: "1.4.3"
 slug: pond_diary
 description: Track pond water tests, treatments, and pond photos from a mobile-friendly web app.
 arch:
@@ -28,5 +28,7 @@ options:
 schema:
   default_mode: str
   black_mode: bool
+
+
 
 

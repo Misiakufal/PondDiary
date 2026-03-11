@@ -333,7 +333,7 @@ def render_app(options: dict) -> str:
     .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
     .panel-title { margin: 0 0 10px; font-size: 1.08rem; letter-spacing: -.02em; }
     .panel-copy { margin: 0; color: var(--muted); line-height: 1.5; }
-    .tabs, .range-toggle { display: grid; gap: 8px; padding: 6px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; }
+    .tabs, .view-toggle, .range-toggle { display: grid; gap: 8px; padding: 6px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; }
     .workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; }
     .side-menu { display: grid; gap: 8px; padding: 8px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 18px; }
     .side-button { border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--muted); padding: 12px 14px; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
@@ -341,12 +341,13 @@ def render_app(options: dict) -> str:
     body.theme-black .side-button.active { background: var(--surface-strong); border-color: var(--line-strong); }
     .workspace-body { min-width: 0; }
     .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 18px; }
+    .view-toggle { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
     .range-toggle { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; }
     .tab, .range-button, .small-button { border: 0; border-radius: 12px; background: transparent; color: var(--muted); padding: 12px 10px; font: inherit; font-weight: 700; cursor: pointer; }
     .tab.active, .range-button.active { background: var(--text); color: var(--surface); }
     body.theme-black .tab.active, body.theme-black .range-button.active { background: var(--surface-strong); color: var(--text); border: 1px solid var(--line-strong); }
-    .form-panel, .main-view { display: none; }
-    .form-panel.active, .main-view.active { display: block; }
+    .form-panel, .main-view, .section-view { display: none; }
+    .form-panel.active, .main-view.active, .section-view.active { display: block; }
     .field { margin-bottom: 14px; }
     .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     label { display: block; margin-bottom: 7px; font-size: .9rem; font-weight: 700; }
@@ -423,16 +424,18 @@ def render_app(options: dict) -> str:
         </div>
         <div class=\"workspace\">
           <nav class=\"side-menu\">
-            <button class=\"side-button active\" type=\"button\" data-view=\"log\">Log</button>
-            <button class=\"side-button\" type=\"button\" data-view=\"chart\">Chart</button>
-            <button class=\"side-button\" type=\"button\" data-view=\"products\">Products</button>
+            <button class=\"side-button\" type=\"button\" data-side-view=\"products\">Products</button>
           </nav>
           <div class=\"workspace-body\">
+            <div class=\"view-toggle\">
+              <button class=\"view-button active\" type=\"button\" data-view=\"log\">Log</button>
+              <button class=\"view-button\" type=\"button\" data-view=\"chart\">Chart</button>
+            </div>
             <div id=\"log-view\" class=\"main-view active\"><div id=\"feed\" class=\"feed\"><div class=\"empty\">No entries yet. Add the first pond update from the left panel.</div></div></div>
             <div id=\"chart-view\" class=\"main-view\"><div class=\"chart-toolbar\"><div><div class=\"metric-choices\" id=\"metric-choices\"></div><div class=\"range-note\">Use mouse wheel to zoom and drag the chart to pan through time.</div></div><div class=\"chart-shell\"><div class=\"chart-meta\"><div class=\"chart-subtle\" id=\"chart-summary\">Select metrics to compare water readings over time.</div><div class=\"chart-actions\"><button class=\"ghost-button\" id=\"reset-zoom\" type=\"button\">Reset zoom</button></div></div><div id=\"chart-frame\" class=\"chart-frame\"><canvas id=\"chart-canvas\" class=\"chart-canvas\"></canvas><div id=\"chart-tooltip\" class=\"chart-tooltip\"></div></div><div class=\"range-toggle\"><button class=\"range-button active\" type=\"button\" data-range=\"week\">Last week</button><button class=\"range-button\" type=\"button\" data-range=\"month\">Last month</button><button class=\"range-button\" type=\"button\" data-range=\"year\">Last year</button></div></div></div><div id=\"chart-empty\" class=\"chart-empty\" style=\"display:none;\">Add water test entries with numeric values to populate the chart.</div></div>
             <div id=\"products-view\" class=\"main-view\"><div class=\"products-stack\"><div><h3 class=\"panel-title\" style=\"margin-bottom:8px;\">Product list</h3><p class=\"panel-copy\">Add products once, then reuse them for treatment entries.</p></div><form id=\"product-catalog-form\" class=\"products-add\"><input id=\"new-product-name\" name=\"name\" type=\"text\" placeholder=\"Add a new pond product\" required><button class=\"small-button\" type=\"submit\">Add product</button></form><div id=\"products-empty\" class=\"products-empty\" style=\"display:none;\">No products saved yet. Add the first one above.</div><div id=\"products-list\" class=\"products-list\"></div></div></div>
           </div>
-        </div></div>
+        </div>
       </section>
     </section>
   </main>
@@ -451,7 +454,8 @@ def render_app(options: dict) -> str:
     const panels = Array.from(document.querySelectorAll(".form-panel"));
     const statusEl = document.getElementById("status");
     const feedEl = document.getElementById("feed");
-    const viewButtons = Array.from(document.querySelectorAll(".side-button"));
+    const productMenuButton = document.querySelector(".side-button");
+    const viewButtons = Array.from(document.querySelectorAll(".view-button"));
     const mainViews = Array.from(document.querySelectorAll(".main-view"));
     const rangeButtons = Array.from(document.querySelectorAll(".range-button"));
     const metricChoicesEl = document.getElementById("metric-choices");
@@ -477,7 +481,7 @@ def render_app(options: dict) -> str:
     function setTodayDefaults() { const today = new Date().toISOString().slice(0, 10); document.querySelectorAll('input[type="date"]').forEach((input) => { if (!input.value) input.value = today; }); }
     function setStatus(message, kind = "") { statusEl.textContent = message || ""; statusEl.className = kind ? `status ${kind}` : "status"; }
     function activateMode(mode) { const activeTab = tabs.find((tab) => tab.dataset.mode === mode) || tabs[0]; tabs.forEach((tab) => tab.classList.toggle("active", tab === activeTab)); panels.forEach((panel) => panel.classList.toggle("active", panel.id === activeTab.dataset.target)); setStatus(""); }
-    function activateMainView(view) { appState.currentView = view; viewButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === view)); mainViews.forEach((panel) => panel.classList.toggle("active", panel.id === `${view}-view`)); if (view === "chart") renderChart(); }
+    function activateMainView(view) { appState.currentView = view; viewButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === view)); if (productMenuButton) { productMenuButton.classList.toggle("active", view === "products"); } mainViews.forEach((panel) => panel.classList.toggle("active", panel.id === `${view}-view`)); if (view === "chart") renderChart(); }
     function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
     function renderDetails(entry) { const details = entry.details || {}; const pills = []; if (entry.type === "water_test") { [["pH", details.ph], ["Temp", details.temperature], ["Ammonia", details.ammonia], ["Nitrite", details.nitrite], ["Nitrate", details.nitrate], ["Hardness", details.hardness]].forEach(([label, value]) => { if (value) pills.push(`<span class="pill">${escapeHtml(label)}: ${escapeHtml(value)}</span>`); }); } else if (entry.type === "product") { [["Dose", details.dose], ["Purpose", details.purpose]].forEach(([label, value]) => { if (value) pills.push(`<span class="pill">${escapeHtml(label)}: ${escapeHtml(value)}</span>`); }); } return pills.join(""); }
     function typeLabel(type) { if (type === "water_test") return "Water Test"; if (type === "product") return "Product"; return "Photo"; }
@@ -510,6 +514,7 @@ def render_app(options: dict) -> str:
     async function renameCatalogProduct(id, name) { const response = await fetch("/api/products-catalog/rename", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, name }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "Unable to rename product."); return result; }
     async function removeCatalogProduct(id) { const response = await fetch("/api/products-catalog/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "Unable to remove product."); return result; }
     tabs.forEach((tab) => tab.addEventListener("click", () => activateMode(tab.dataset.mode)));
+    if (productMenuButton) { productMenuButton.addEventListener("click", () => activateMainView("products")); }
     viewButtons.forEach((button) => button.addEventListener("click", () => activateMainView(button.dataset.view)));
     rangeButtons.forEach((button) => button.addEventListener("click", () => { appState.chartRange = button.dataset.range; rangeButtons.forEach((item) => item.classList.toggle("active", item === button)); resetChartDomain(getPreparedPoints()); renderChart(); }));
     metricChoicesEl.addEventListener("change", (event) => { const input = event.target.closest("input[data-metric]"); if (!input) return; if (input.checked) appState.activeMetrics.add(input.dataset.metric); else appState.activeMetrics.delete(input.dataset.metric); renderChart(); });
@@ -521,7 +526,7 @@ def render_app(options: dict) -> str:
     chartFrameEl.addEventListener("pointerleave", () => { if (!appState.chart.dragging) hideTooltip(); });
     feedEl.addEventListener("click", (event) => { const button = event.target.closest(".entry-delete"); if (!button) return; const entryId = Number(button.dataset.entryId); if (!entryId || !window.confirm("Remove this entry?")) return; deleteEntry(entryId); });
     productsListEl.addEventListener("click", async (event) => { const row = event.target.closest(".product-row"); if (!row) return; const productId = Number(row.dataset.productId); const input = row.querySelector(".product-name-input"); if (event.target.closest(".product-rename")) { setStatus("Saving product..."); try { await renameCatalogProduct(productId, input.value); setStatus("Product updated.", "success"); await loadAppData(); } catch (error) { setStatus(error.message || "Unable to rename product.", "error"); } return; } if (event.target.closest(".product-remove")) { if (!window.confirm("Remove this product from the list?")) return; setStatus("Removing product..."); try { await removeCatalogProduct(productId); setStatus("Product removed from the list.", "success"); await loadProducts(); } catch (error) { setStatus(error.message || "Unable to remove product.", "error"); } } });
-    document.getElementById("product-catalog-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const input = document.getElementById("new-product-name"); const submit = form.querySelector("button"); const name = input.value.trim(); if (!name) { setStatus("Product name is required.", "error"); input.focus(); return; } submit.disabled = true; setStatus("Adding product..."); try { await addCatalogProduct(name); form.reset(); setStatus("Product added.", "success"); await loadProducts(); activateMainView("products"); } catch (error) { setStatus(error.message || "Unable to add product.", "error"); } finally { submit.disabled = false; } });
+    document.getElementById("product-catalog-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const input = document.getElementById("new-product-name"); const submit = form.querySelector("button"); const name = input.value.trim(); if (!name) { setStatus("Product name is required.", "error"); input.focus(); return; } submit.disabled = true; setStatus("Adding product..."); try { const created = await addCatalogProduct(name); form.reset(); setStatus(`Product added: ${created.name}.`, "success"); await loadProducts(); activateMainView("products"); input.blur(); } catch (error) { setStatus(error.message || "Unable to add product.", "error"); } finally { submit.disabled = false; } });
     document.getElementById("water-form").addEventListener("submit", (event) => { event.preventDefault(); submitJsonForm(event.currentTarget, "/api/water-tests"); });
     document.getElementById("product-form").addEventListener("submit", (event) => { event.preventDefault(); submitJsonForm(event.currentTarget, "/api/products"); });
     document.getElementById("photo-form").addEventListener("submit", (event) => { event.preventDefault(); submitPhotoForm(event.currentTarget); });
@@ -657,6 +662,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
 
 
 
