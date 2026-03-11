@@ -1,5 +1,5 @@
 name: Pond Diary
-version: "1.3.0"
+version: "1.3.1"
 slug: pond_diary
 description: Track pond water tests, treatments, and pond photos from a mobile-friendly web app.
 arch:
@@ -11,7 +11,7 @@ boot: auto
 init: false
 ingress: true
 ingress_port: 8099
-ingress_entry: true
+ingress_entry: /
 panel_title: Pond Diary
 panel_icon: mdi:fishbowl
 panel_admin: false
@@ -26,5 +26,5 @@ options:
   default_mode: water_test
   black_mode: false
 schema:
-  default_mode: list(water_test|product|photo)
+  default_mode: str
   black_mode: bool
