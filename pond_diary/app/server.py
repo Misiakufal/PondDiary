@@ -333,13 +333,18 @@ def render_app(options: dict) -> str:
     .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
     .panel-title { margin: 0 0 10px; font-size: 1.08rem; letter-spacing: -.02em; }
     .panel-copy { margin: 0; color: var(--muted); line-height: 1.5; }
-    .tabs, .view-toggle, .range-toggle { display: grid; gap: 8px; padding: 6px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; }
+    .tabs, .range-toggle { display: grid; gap: 8px; padding: 6px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 16px; }
+    .workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .side-menu { display: grid; gap: 8px; padding: 8px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 18px; }
+    .side-button { border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--muted); padding: 12px 14px; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+    .side-button.active { background: var(--surface); color: var(--text); border-color: var(--line); }
+    body.theme-black .side-button.active { background: var(--surface-strong); border-color: var(--line-strong); }
+    .workspace-body { min-width: 0; }
     .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 18px; }
-    .view-toggle { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .range-toggle { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; }
-    .tab, .view-button, .range-button, .small-button { border: 0; border-radius: 12px; background: transparent; color: var(--muted); padding: 12px 10px; font: inherit; font-weight: 700; cursor: pointer; }
-    .tab.active, .view-button.active, .range-button.active { background: var(--text); color: var(--surface); }
-    body.theme-black .tab.active, body.theme-black .view-button.active, body.theme-black .range-button.active { background: var(--surface-strong); color: var(--text); border: 1px solid var(--line-strong); }
+    .tab, .range-button, .small-button { border: 0; border-radius: 12px; background: transparent; color: var(--muted); padding: 12px 10px; font: inherit; font-weight: 700; cursor: pointer; }
+    .tab.active, .range-button.active { background: var(--text); color: var(--surface); }
+    body.theme-black .tab.active, body.theme-black .range-button.active { background: var(--surface-strong); color: var(--text); border: 1px solid var(--line-strong); }
     .form-panel, .main-view { display: none; }
     .form-panel.active, .main-view.active { display: block; }
     .field { margin-bottom: 14px; }
@@ -391,7 +396,7 @@ def render_app(options: dict) -> str:
     .product-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--surface-soft); }
     .product-remove { color: var(--danger); }
     @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
-    @media (max-width: 640px) { .app { width: min(100vw - 16px, 100%); padding-top: 16px; } .hero, .panel { border-radius: 18px; } .tabs, .range-toggle, .view-toggle, .products-add, .grid-2, .product-row { grid-template-columns: 1fr; } .entry-top, .chart-meta, .panel-head { flex-direction: column; } .chart-frame { height: 340px; } .chart-actions { justify-content: stretch; } .ghost-button, .small-button, .product-remove { width: 100%; } }
+    @media (max-width: 640px) { .app { width: min(100vw - 16px, 100%); padding-top: 16px; } .hero, .panel { border-radius: 18px; } .tabs, .range-toggle, .products-add, .grid-2, .product-row, .workspace { grid-template-columns: 1fr; } .entry-top, .chart-meta, .panel-head { flex-direction: column; } .chart-frame { height: 340px; } .chart-actions { justify-content: stretch; } .ghost-button, .small-button, .product-remove, .side-button { width: 100%; } }
   </style>
 </head>
 <body class=\"__BODY_CLASS__\">
@@ -414,16 +419,20 @@ def render_app(options: dict) -> str:
       </aside>
       <section class=\"panel\">
         <div class=\"panel-head\">
-          <div><h2 class=\"panel-title\">Pond activity</h2><p class=\"panel-copy\">Switch between the activity log, water test chart, and product catalog management.</p></div>
-          <div class=\"view-toggle\">
-            <button class=\"view-button active\" type=\"button\" data-view=\"log\">Log</button>
-            <button class=\"view-button\" type=\"button\" data-view=\"chart\">Chart</button>
-            <button class=\"view-button\" type=\"button\" data-view=\"products\">Products</button>
-          </div>
+          <div><h2 class=\"panel-title\">Pond activity</h2><p class=\"panel-copy\">Use the left-side menu to switch between the log, chart, and product catalog.</p></div>
         </div>
-        <div id=\"log-view\" class=\"main-view active\"><div id=\"feed\" class=\"feed\"><div class=\"empty\">No entries yet. Add the first pond update from the left panel.</div></div></div>
-        <div id=\"chart-view\" class=\"main-view\"><div class=\"chart-toolbar\"><div><div class=\"metric-choices\" id=\"metric-choices\"></div><div class=\"range-note\">Use mouse wheel to zoom and drag the chart to pan through time.</div></div><div class=\"chart-shell\"><div class=\"chart-meta\"><div class=\"chart-subtle\" id=\"chart-summary\">Select metrics to compare water readings over time.</div><div class=\"chart-actions\"><button class=\"ghost-button\" id=\"reset-zoom\" type=\"button\">Reset zoom</button></div></div><div id=\"chart-frame\" class=\"chart-frame\"><canvas id=\"chart-canvas\" class=\"chart-canvas\"></canvas><div id=\"chart-tooltip\" class=\"chart-tooltip\"></div></div><div class=\"range-toggle\"><button class=\"range-button active\" type=\"button\" data-range=\"week\">Last week</button><button class=\"range-button\" type=\"button\" data-range=\"month\">Last month</button><button class=\"range-button\" type=\"button\" data-range=\"year\">Last year</button></div></div></div><div id=\"chart-empty\" class=\"chart-empty\" style=\"display:none;\">Add water test entries with numeric values to populate the chart.</div></div>
-        <div id=\"products-view\" class=\"main-view\"><div class=\"products-stack\"><div><h3 class=\"panel-title\" style=\"margin-bottom:8px;\">Product list</h3><p class=\"panel-copy\">Add products once, then reuse them for treatment entries.</p></div><form id=\"product-catalog-form\" class=\"products-add\"><input id=\"new-product-name\" name=\"name\" type=\"text\" placeholder=\"Add a new pond product\" required><button class=\"small-button\" type=\"submit\">Add product</button></form><div id=\"products-empty\" class=\"products-empty\" style=\"display:none;\">No products saved yet. Add the first one above.</div><div id=\"products-list\" class=\"products-list\"></div></div></div>
+        <div class=\"workspace\">
+          <nav class=\"side-menu\">
+            <button class=\"side-button active\" type=\"button\" data-view=\"log\">Log</button>
+            <button class=\"side-button\" type=\"button\" data-view=\"chart\">Chart</button>
+            <button class=\"side-button\" type=\"button\" data-view=\"products\">Products</button>
+          </nav>
+          <div class=\"workspace-body\">
+            <div id=\"log-view\" class=\"main-view active\"><div id=\"feed\" class=\"feed\"><div class=\"empty\">No entries yet. Add the first pond update from the left panel.</div></div></div>
+            <div id=\"chart-view\" class=\"main-view\"><div class=\"chart-toolbar\"><div><div class=\"metric-choices\" id=\"metric-choices\"></div><div class=\"range-note\">Use mouse wheel to zoom and drag the chart to pan through time.</div></div><div class=\"chart-shell\"><div class=\"chart-meta\"><div class=\"chart-subtle\" id=\"chart-summary\">Select metrics to compare water readings over time.</div><div class=\"chart-actions\"><button class=\"ghost-button\" id=\"reset-zoom\" type=\"button\">Reset zoom</button></div></div><div id=\"chart-frame\" class=\"chart-frame\"><canvas id=\"chart-canvas\" class=\"chart-canvas\"></canvas><div id=\"chart-tooltip\" class=\"chart-tooltip\"></div></div><div class=\"range-toggle\"><button class=\"range-button active\" type=\"button\" data-range=\"week\">Last week</button><button class=\"range-button\" type=\"button\" data-range=\"month\">Last month</button><button class=\"range-button\" type=\"button\" data-range=\"year\">Last year</button></div></div></div><div id=\"chart-empty\" class=\"chart-empty\" style=\"display:none;\">Add water test entries with numeric values to populate the chart.</div></div>
+            <div id=\"products-view\" class=\"main-view\"><div class=\"products-stack\"><div><h3 class=\"panel-title\" style=\"margin-bottom:8px;\">Product list</h3><p class=\"panel-copy\">Add products once, then reuse them for treatment entries.</p></div><form id=\"product-catalog-form\" class=\"products-add\"><input id=\"new-product-name\" name=\"name\" type=\"text\" placeholder=\"Add a new pond product\" required><button class=\"small-button\" type=\"submit\">Add product</button></form><div id=\"products-empty\" class=\"products-empty\" style=\"display:none;\">No products saved yet. Add the first one above.</div><div id=\"products-list\" class=\"products-list\"></div></div></div>
+          </div>
+        </div></div>
       </section>
     </section>
   </main>
@@ -442,7 +451,7 @@ def render_app(options: dict) -> str:
     const panels = Array.from(document.querySelectorAll(".form-panel"));
     const statusEl = document.getElementById("status");
     const feedEl = document.getElementById("feed");
-    const viewButtons = Array.from(document.querySelectorAll(".view-button"));
+    const viewButtons = Array.from(document.querySelectorAll(".side-button"));
     const mainViews = Array.from(document.querySelectorAll(".main-view"));
     const rangeButtons = Array.from(document.querySelectorAll(".range-button"));
     const metricChoicesEl = document.getElementById("metric-choices");
@@ -512,7 +521,7 @@ def render_app(options: dict) -> str:
     chartFrameEl.addEventListener("pointerleave", () => { if (!appState.chart.dragging) hideTooltip(); });
     feedEl.addEventListener("click", (event) => { const button = event.target.closest(".entry-delete"); if (!button) return; const entryId = Number(button.dataset.entryId); if (!entryId || !window.confirm("Remove this entry?")) return; deleteEntry(entryId); });
     productsListEl.addEventListener("click", async (event) => { const row = event.target.closest(".product-row"); if (!row) return; const productId = Number(row.dataset.productId); const input = row.querySelector(".product-name-input"); if (event.target.closest(".product-rename")) { setStatus("Saving product..."); try { await renameCatalogProduct(productId, input.value); setStatus("Product updated.", "success"); await loadAppData(); } catch (error) { setStatus(error.message || "Unable to rename product.", "error"); } return; } if (event.target.closest(".product-remove")) { if (!window.confirm("Remove this product from the list?")) return; setStatus("Removing product..."); try { await removeCatalogProduct(productId); setStatus("Product removed from the list.", "success"); await loadProducts(); } catch (error) { setStatus(error.message || "Unable to remove product.", "error"); } } });
-    document.getElementById("product-catalog-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const input = document.getElementById("new-product-name"); const submit = form.querySelector("button"); submit.disabled = true; setStatus("Adding product..."); try { await addCatalogProduct(input.value); form.reset(); setStatus("Product added.", "success"); await loadProducts(); } catch (error) { setStatus(error.message || "Unable to add product.", "error"); } finally { submit.disabled = false; } });
+    document.getElementById("product-catalog-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const input = document.getElementById("new-product-name"); const submit = form.querySelector("button"); const name = input.value.trim(); if (!name) { setStatus("Product name is required.", "error"); input.focus(); return; } submit.disabled = true; setStatus("Adding product..."); try { await addCatalogProduct(name); form.reset(); setStatus("Product added.", "success"); await loadProducts(); activateMainView("products"); } catch (error) { setStatus(error.message || "Unable to add product.", "error"); } finally { submit.disabled = false; } });
     document.getElementById("water-form").addEventListener("submit", (event) => { event.preventDefault(); submitJsonForm(event.currentTarget, "/api/water-tests"); });
     document.getElementById("product-form").addEventListener("submit", (event) => { event.preventDefault(); submitJsonForm(event.currentTarget, "/api/products"); });
     document.getElementById("photo-form").addEventListener("submit", (event) => { event.preventDefault(); submitPhotoForm(event.currentTarget); });
@@ -648,3 +657,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
